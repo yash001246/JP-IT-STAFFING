@@ -1,25 +1,37 @@
-import nodemailer from 'nodemailer'
+import fs from 'fs'
+import { Resend } from 'resend'
 
-let transporter = null
+// NOTE: function names (verifySMTP, sendCampaignEmails, fillTemplate) are kept as-is
+// even though sending now goes through Resend's HTTP API instead of raw SMTP.
+// This is because Render's free web services block outbound SMTP ports (25/465/587),
+// so we switched to an HTTPS-based email API which is not blocked. Keeping the same
+// exported names means campaignController.js and settingsController.js need no changes.
 
-function getTransporter() {
-  if (transporter) return transporter
+let resendClient = null
 
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    const err = new Error('SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS in your .env file.')
+function getResend() {
+  if (resendClient) return resendClient
+
+  const { RESEND_API_KEY } = process.env
+  if (!RESEND_API_KEY) {
+    const err = new Error('Resend is not configured. Set RESEND_API_KEY in your .env file.')
     err.statusCode = 400
     throw err
   }
 
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT) || 587,
-    secure: SMTP_SECURE === 'true', // true for port 465, false for 587/25 (STARTTLS)
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  })
+  resendClient = new Resend(RESEND_API_KEY)
+  return resendClient
+}
 
-  return transporter
+function getFromAddress() {
+  const fromName = process.env.FROM_NAME || 'EmailPro'
+  const fromEmail = process.env.FROM_EMAIL
+  if (!fromEmail) {
+    const err = new Error('FROM_EMAIL is not set. Set it in your .env file (use onboarding@resend.dev until your domain is verified).')
+    err.statusCode = 400
+    throw err
+  }
+  return `${fromName} <${fromEmail}>`
 }
 
 // Replace {{business_name}}, {{first_name}}, {{country}}, {{email}} placeholders with lead data.
@@ -31,30 +43,41 @@ export function fillTemplate(template, lead) {
     .replace(/{{\s*email\s*}}/gi, lead.email || '')
 }
 
-// Verify SMTP credentials are correct and the server is reachable.
+// "Verify" for Resend = confirm the API key actually works by hitting a lightweight endpoint.
 export async function verifySMTP() {
-  const t = getTransporter()
-  return t.verify()
+  const resend = getResend()
+  const { error } = await resend.domains.list()
+  if (error) {
+    const err = new Error(error.message || 'Resend API key is invalid or unauthorized')
+    throw err
+  }
+  return true
 }
 
-// Sends one email per lead. Returns { sent, bounced, errors[] }.
+// Sends one email per lead via Resend's HTTP API. Returns { sent, bounced, errors[] }.
 export async function sendCampaignEmails({ subject, body, leads, attachmentPath, attachmentName }) {
-  const t = getTransporter()
-  const fromName = process.env.FROM_NAME || 'EmailPro'
-  const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER
+  const resend = getResend()
+  const from = getFromAddress()
+
+  let attachments
+  if (attachmentPath) {
+    const content = fs.readFileSync(attachmentPath).toString('base64')
+    attachments = [{ filename: attachmentName || 'attachment.pdf', content }]
+  }
 
   const result = { sent: 0, bounced: 0, errors: [] }
 
   for (const lead of leads) {
     try {
-      await t.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
+      const { error } = await resend.emails.send({
+        from,
         to: lead.email,
         subject: fillTemplate(subject, lead),
         text: fillTemplate(body, lead),
         html: fillTemplate(body, lead).replace(/\n/g, '<br/>'),
-        attachments: attachmentPath ? [{ filename: attachmentName, path: attachmentPath }] : [],
+        ...(attachments && { attachments }),
       })
+      if (error) throw new Error(error.message || 'Resend rejected this email')
       result.sent += 1
     } catch (err) {
       result.bounced += 1
