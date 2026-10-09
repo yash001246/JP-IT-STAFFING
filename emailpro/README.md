@@ -1,117 +1,167 @@
-# EmailPro — AI-Powered Email Outreach & Lead Generation
+# EmailPro
 
-A full-stack SaaS starter: React + Vite + Tailwind frontend, Express + MongoDB backend, JWT auth, CSV/PDF uploads, and a dark glassmorphism UI.
+**AI-powered email outreach and lead generation platform.** Manage leads, generate personalized emails, send real bulk campaigns, and track performance, all from one dashboard.
+
+Built with React, Node.js, Express, and MongoDB. Email delivery via the Resend API. Deployed on Render.
+
+**Live Demo:** `[add frontend URL]`
+**API:** `[add backend URL]`
+
+---
+
+## Features
+
+- **Authentication:** JWT-based signup/login, bcrypt password hashing, protected routes, session persists on refresh
+- **Lead Management:** add leads manually or bulk-import via CSV; server-side search, source filter, and pagination
+- **AI Email Generator:** generates a subject line, personalized email, and follow-up from business name, industry, and product/service (template-based; ready to plug into an LLM API)
+- **Campaign Builder:** compose subject and body with merge placeholders, select leads, attach a PDF, and send immediately or schedule
+- **Analytics Dashboard:** total leads, emails sent, open rate, conversion rate, campaign trends, and top campaigns
+- **Settings:** email provider connection test, API key view/rotate, team members, theme toggle
+- **Responsive dark UI:** glassmorphism design with purple/blue gradient accents
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, Vite, React Router, Tailwind CSS, Recharts, Lucide Icons |
+| Backend | Node.js, Express.js (REST API) |
+| Database | MongoDB Atlas, Mongoose |
+| Auth | JSON Web Tokens, bcryptjs |
+| Email | Resend API |
+| Uploads | Multer (CSV leads, PDF attachments) |
+| Hosting | Render (Web Service + Static Site) |
+
+## Project Structure
 
 ```
 emailpro/
-├── frontend/     React + Vite + Tailwind (deploy to Vercel)
-└── backend/      Express + MongoDB + JWT (deploy to Render)
+├── backend/
+│   ├── config/         # MongoDB connection
+│   ├── controllers/    # auth, leads, campaigns, analytics, ai, settings
+│   ├── middleware/     # JWT auth, file upload, error handling
+│   ├── models/         # User, Lead, Campaign, Team
+│   ├── routes/         # REST route definitions
+│   ├── utils/          # mailer (Resend), token generation
+│   └── server.js
+└── frontend/
+    └── src/
+        ├── components/ # ui, layout, charts
+        ├── context/    # AuthContext
+        ├── lib/        # api.js (fetch wrapper), dummy data
+        └── pages/      # Landing, Login, Signup, Dashboard, Leads,
+                        # AIGenerator, CampaignBuilder, Analytics, Settings
 ```
 
-## Frontend
+## How It Works
+
+1. User signs up or logs in. The backend issues a JWT, which the frontend sends as a `Bearer` token on every request.
+2. Leads are stored in MongoDB and queried with search, filter, and pagination params.
+3. In the Campaign Builder, the user picks leads and writes the email. On send, the backend loops through each lead, fills placeholders (`{{business_name}}`, `{{first_name}}`, `{{country}}`, `{{email}}`), and sends via the Resend API.
+4. The backend returns real sent/failed counts, which are saved on the campaign and shown in the dashboard and analytics.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- A MongoDB Atlas cluster (free tier works)
+- A Resend account and API key
+
+### Backend
+
+```bash
+cd backend
+npm install
+cp .env.example .env     # then fill in the values below
+npm run dev              # http://localhost:5000
+```
+
+`backend/.env`:
+
+```env
+PORT=5000
+NODE_ENV=development
+MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/emailpro
+JWT_SECRET=<long random string>
+JWT_EXPIRES_IN=7d
+CLIENT_URL=http://localhost:5173
+
+RESEND_API_KEY=re_xxxxxxxxxxxx
+FROM_NAME=EmailPro
+FROM_EMAIL=onboarding@resend.dev
+```
+
+Generate a JWT secret:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:5173
+npm run dev              # http://localhost:5173
 ```
 
-Routes:
-- `/` — landing page
-- `/login`, `/signup` — auth
-- `/app` — dashboard (stats, delivery chart, activity)
-- `/app/leads` — lead table, CSV upload, add lead, filters, pagination
-- `/app/ai-generator` — AI email generator (mocked; wire to backend `/api/ai/generate-email`)
-- `/app/campaigns` — campaign builder (rich text body, lead picker, schedule/send)
-- `/app/analytics` — trend chart, funnel, country breakdown, top campaigns
-- `/app/settings` — provider integrations, API key, team, theme toggle
+`frontend/.env`:
 
-The frontend currently runs on realistic **mock data** (`src/lib/dummyData.js`) so it's fully interactive out of the box. To connect it to the real API, add a `.env` with:
-
-```
-VITE_API_URL=https://your-backend.onrender.com/api
+```env
+VITE_API_URL=http://localhost:5000/api
 ```
 
-and replace the dummy-data calls with `fetch`/`axios` calls to the endpoints listed below, using the JWT returned from `/api/auth/login`.
+## API Reference
 
-**Deploy to Vercel:**
-1. Push this repo to GitHub.
-2. Import the `frontend` folder as a new Vercel project (Framework: Vite).
-3. Set `VITE_API_URL` as an environment variable pointing to your Render backend.
-4. Deploy.
-
-## Backend
-
-```bash
-cd backend
-cp .env.example .env    # fill in MONGO_URI and JWT_SECRET
-npm install
-npm run dev              # http://localhost:5000
-```
-
-### REST API
+All routes except `/auth/register` and `/auth/login` require `Authorization: Bearer <token>`.
 
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/auth/register` | Create account |
 | POST | `/api/auth/login` | Log in, returns JWT |
-| GET | `/api/auth/me` | Current user (protected) |
-| GET | `/api/leads` | List leads (search, source, page, limit) |
-| POST | `/api/leads` | Add lead manually |
-| PATCH | `/api/leads/:id` | Update lead |
-| DELETE | `/api/leads/:id` | Delete lead |
-| POST | `/api/leads/upload-csv` | Bulk import via CSV (`multipart/form-data`, field `file`) |
+| GET | `/api/auth/me` | Current user |
+| GET | `/api/leads` | List leads (`search`, `source`, `page`, `limit`) |
+| POST | `/api/leads` | Add a lead |
+| PATCH | `/api/leads/:id` | Update a lead |
+| DELETE | `/api/leads/:id` | Delete a lead |
+| POST | `/api/leads/upload-csv` | Bulk import (multipart, field `file`) |
 | GET | `/api/campaigns` | List campaigns |
-| GET | `/api/campaigns/:id` | Get one campaign |
-| POST | `/api/campaigns` | Create campaign (`attachment` file field optional) |
-| PATCH | `/api/campaigns/:id` | Update campaign |
-| DELETE | `/api/campaigns/:id` | Delete campaign |
+| POST | `/api/campaigns` | Create and send/schedule a campaign (multipart, optional `attachment`) |
 | GET | `/api/analytics/overview` | Aggregate stats |
 | GET | `/api/analytics/campaigns/top` | Top campaigns by open rate |
-| POST | `/api/ai/generate-email` | AI subject/body/follow-up (mocked; see `controllers/aiController.js` for the real-LLM stub) |
+| POST | `/api/ai/generate-email` | Generate subject, email, and follow-up |
 | GET | `/api/settings/api-key` | Get API key |
 | POST | `/api/settings/api-key/rotate` | Rotate API key |
-| GET | `/api/settings/team` | Get team + members |
-| POST | `/api/settings/team/invite` | Invite a team member |
+| GET | `/api/settings/test-smtp` | Verify the email provider key |
+| GET | `/api/health` | Health check |
 
-All protected routes require `Authorization: Bearer <token>`.
+## Deployment (Render)
 
-### Sending real campaign emails (SMTP)
+**Backend (Web Service)**
+- Root Directory: `backend` (adjust if nested, e.g. `emailpro/backend`)
+- Build Command: `npm install`
+- Start Command: `npm start`
+- Environment variables: everything in the backend `.env` above. Render does not read your local `.env`, so add each one in the dashboard.
+- In MongoDB Atlas, allow network access from `0.0.0.0/0`.
 
-Campaign sending is fully wired to real SMTP via `nodemailer` — no more simulated stats. When you send a campaign immediately, the backend actually emails every selected lead.
+**Frontend (Static Site)**
+- Root Directory: `frontend`
+- Build Command: `npm install && npm run build`
+- Publish Directory: `dist`
+- Environment variable: `VITE_API_URL=https://<your-backend>.onrender.com/api`
+- Rewrite rule: `/*` to `/index.html` (Rewrite), required for React Router.
 
-1. Get SMTP credentials from any provider — SendGrid, Mailgun, Postmark, Amazon SES, Brevo, or your own mail server.
-2. Add these to `backend/.env`:
-   ```
-   SMTP_HOST=smtp.yourprovider.com
-   SMTP_PORT=587
-   SMTP_USER=your_smtp_username
-   SMTP_PASS=your_smtp_password
-   SMTP_SECURE=false        # true only if using port 465
-   FROM_NAME=EmailPro
-   FROM_EMAIL=you@yourdomain.com
-   ```
-3. Restart the backend, then go to **Settings → Email sending (SMTP)** in the app and click **Test connection** to confirm it can authenticate before sending real campaigns.
-4. Create a campaign and select leads — clicking "Send campaign" now actually dispatches one email per lead and reports real sent/bounced counts back in the UI.
+After the frontend is live, set the backend's `CLIENT_URL` to the frontend URL to avoid CORS errors.
 
-Notes:
-- Email body supports `{{business_name}}`, `{{first_name}}`, `{{country}}`, and `{{email}}` placeholders, filled in per-lead.
-- **Scheduled** campaigns are saved with status `Scheduled` but are not auto-dispatched — there's no background job runner yet. To make scheduling actually fire emails at the chosen time, add a cron job (e.g. `node-cron`) or a queue (e.g. BullMQ + Redis) that polls for due campaigns and calls `sendCampaignEmails()` from `utils/mailer.js`.
-- Many providers (Gmail included) require an **app password** rather than your normal account password, and may need "less secure app" / app-specific settings enabled.
-- If you see leads flagged as bounced, check `failures` in the campaign-create response for the specific SMTP error per address (often invalid address format or provider rate limits).
+## Notes and Limitations
 
-### Wiring real AI generation
+- **Email provider:** Render's free tier blocks outbound SMTP ports (25/465/587), so sending uses Resend's HTTPS API instead. Until you verify your own domain in Resend, mail can only be sent from `onboarding@resend.dev` and only to the email address your Resend account was created with.
+- **Scheduled campaigns** are stored but not auto-dispatched yet. A cron job or queue (e.g. node-cron, BullMQ) is needed.
+- **AI generator** is template-based. `controllers/aiController.js` includes a commented example for calling an LLM API.
+- **File uploads** are saved to local disk, which is ephemeral on Render's free tier. Use S3 or Cloudinary for persistence.
+- **Team members** on the Settings page are illustrative; the invite endpoint exists but does not send invitations.
+- Render free web services sleep after inactivity, so the first request can be slow.
 
-`controllers/aiController.js` currently returns deterministic mock content. A commented example for calling the Anthropic Messages API is included in that file — add `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) to `.env` and swap in the real `fetch` call.
+## License
 
-**Deploy to Render:**
-1. Push this repo to GitHub.
-2. New Web Service → root directory `backend` → build command `npm install` → start command `npm start`.
-3. Add environment variables from `.env.example` (use a real MongoDB Atlas `MONGO_URI` and a strong `JWT_SECRET`).
-4. Set `CLIENT_URL` to your deployed Vercel frontend URL for CORS.
-
-## Notes
-
-- Frontend ships with realistic dummy data so every screen is interactive without a backend running.
-- Backend is structured (models/controllers/routes/middleware) but has not been run against a live MongoDB instance in this environment — test locally with MongoDB Atlas or `mongod` before deploying.
-- Multer v2 is used for uploads (CSV for leads, PDF for campaign attachments), capped at 10MB.
+MIT
