@@ -4,8 +4,8 @@
 
 Built with React, Node.js, Express, and MongoDB. Email delivery via the Resend API. Deployed on Render.
 
-**Live Demo:** `[add frontend URL]`
-**API:** `[add backend URL]`
+**Live Demo:** `https://jp-it-staffing.onrender.com`
+**API:** `https://emailpro-backend-ij9s.onrender.com`
 
 ---
 
